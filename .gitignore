@@ -1,0 +1,38 @@
+﻿# System
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Python cache
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.dat~
+*.fis~
+*.p2dat~
+*.p3dat~
+
+# PFC / Itasca binary save files
+*.sav
+*.p2sav
+*.p3sav
+*.f2sav
+*.f3sav
+
+# Large outputs
+outputs/*
+!outputs/.gitkeep
+
+# Large result media
+*.avi
+*.mp4
+*.gif

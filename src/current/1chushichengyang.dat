@@ -1,0 +1,333 @@
+model new
+model random 10001
+
+def par
+   
+    width  = 85.0
+    height = 150.0
+    maishen = 60.0
+
+    rdmin = 0.20
+    rdmax = 0.30
+    poro  = 0.10
+    
+    ball_margin = 2.0*rdmax
+
+    init_emod = 8.0e7
+    init_krat = 2.7
+    init_density = 3000.0
+    init_damp = 0.1
+    init_fric = 0.1
+    wall_fric = 0.1
+
+    servo_sxx = -1.0e6
+    servo_syy = -1.0e6
+
+    servo_tol = 2.0e-2
+    stress_rate_tol = 2.0e-3
+    servo_gain_fac = 0.2
+    servo_gain_update_freq = 1
+    servo_max_steps = 300000
+    servo_max_vel = 0.02
+    steady_need = 500
+
+    dom_x_fac = 0.60
+    dom_y_bot_fac = 1.10
+    dom_y_top_fac = 0.90
+end
+@par
+
+
+def geom_par
+    x_left  = -width * 0.5
+    x_right =  width * 0.5
+    y_top   = -maishen
+    y_bot   = -maishen - height
+
+    wall_len_v = height
+    wall_len_h = width
+    wall_overlap = 10.0*rdmax
+end
+@geom_par
+
+
+model domain extent [x_left*(1.0+dom_x_fac)] [x_right*(1.0+dom_x_fac)] ...
+                    [y_bot*dom_y_bot_fac] [y_top*dom_y_top_fac] condition destroy
+
+cmat default model linear method deform emod @init_emod kratio @init_krat ...
+             property fric @init_fric
+
+wall create id 1 group '1' vertices [x_left]  [y_top+wall_overlap] [x_left]  [y_bot-wall_overlap]
+wall create id 2 group '1' vertices [x_left-wall_overlap]  [y_bot] [x_right+wall_overlap] [y_bot]
+wall create id 3 group '1' vertices [x_right] [y_bot-wall_overlap] [x_right] [y_top+wall_overlap]
+wall create id 4 group '1' vertices [x_right+wall_overlap] [y_top] [x_left-wall_overlap]  [y_top]
+
+ball distribute porosity @poro radius @rdmin @rdmax box ...
+               [x_left+ball_margin] [x_right-ball_margin] [y_bot+ball_margin] [y_top-ball_margin]
+
+ball attribute density @init_density damp @init_damp
+wall property 'fric' @wall_fric
+
+
+model mechanical timestep scale
+model cycle 5000 calm 100
+
+model mechanical timestep auto
+model cycle 10000
+
+ball attribute displacement multiply 0.0
+
+
+def wall_addr
+    wadd1 = wall.find(1)
+    wadd2 = wall.find(2)
+    wadd3 = wall.find(3)
+    wadd4 = wall.find(4)
+end
+@wall_addr
+
+def compute_wallstress
+    
+    wnst1 = math.sqrt(wall.force.contact.x(wadd1)^2 + wall.force.contact.y(wadd1)^2)
+    wnst2 = math.sqrt(wall.force.contact.x(wadd2)^2 + wall.force.contact.y(wadd2)^2)
+    wnst3 = math.sqrt(wall.force.contact.x(wadd3)^2 + wall.force.contact.y(wadd3)^2)
+    wnst4 = math.sqrt(wall.force.contact.x(wadd4)^2 + wall.force.contact.y(wadd4)^2)
+
+    wnst1 = -wnst1 / wall_len_v
+    wnst2 = -wnst2 / wall_len_h
+    wnst3 = -wnst3 / wall_len_v
+    wnst4 = -wnst4 / wall_len_h
+end
+
+def compute_gain
+    fac = servo_gain_fac
+    gx = 0.0
+
+    wp = wall.find(1)
+    loop foreach contact wall.contactmap(wp)
+        gx = gx + contact.prop(contact, "kn")
+    endloop
+    if gx < 1e5 then
+        gx = 1e5
+    endif
+    gx1 = fac * wall_len_v / (gx * global.timestep)
+
+    gx = 0.0
+    wp = wall.find(2)
+    loop foreach contact wall.contactmap(wp)
+        gx = gx + contact.prop(contact, "kn")
+    endloop
+    if gx < 1e5 then
+        gx = 1e5
+    endif
+    gx2 = fac * wall_len_h / (gx * global.timestep)
+
+    gx = 0.0
+    wp = wall.find(3)
+    loop foreach contact wall.contactmap(wp)
+        gx = gx + contact.prop(contact, "kn")
+    endloop
+    if gx < 1e5 then
+        gx = 1e5
+    endif
+    gx3 = fac * wall_len_v / (gx * global.timestep)
+
+    gx = 0.0
+    wp = wall.find(4)
+    loop foreach contact wall.contactmap(wp)
+        gx = gx + contact.prop(contact, "kn")
+    endloop
+    if gx < 1e5 then
+        gx = 1e5
+    endif
+    gx4 = fac * wall_len_h / (gx * global.timestep)
+end
+
+def servo_walls
+    compute_wallstress
+
+    if do_servo1 then
+        udv1 = gx1 * (wnst1 - servo_sxx)
+        if math.abs(udv1) >= servo_max_vel then
+            udv1 = math.sgn(udv1) * servo_max_vel
+        endif
+        wall.vel.x(wadd1) =  udv1
+        wall.vel.y(wadd1) =  0.0
+    else
+        wall.vel.x(wadd1) = 0.0
+        wall.vel.y(wadd1) = 0.0
+    endif
+
+    if do_servo2 then
+        udv2 = gx2 * (wnst2 - servo_syy)
+        if math.abs(udv2) >= servo_max_vel then
+            udv2 = math.sgn(udv2) * servo_max_vel
+        endif
+        wall.vel.x(wadd2) = 0.0
+        wall.vel.y(wadd2) =  udv2
+    else
+        wall.vel.x(wadd2) = 0.0
+        wall.vel.y(wadd2) = 0.0
+    endif
+
+    if do_servo3 then
+        udv3 = gx3 * (wnst3 - servo_sxx)
+        if math.abs(udv3) >= servo_max_vel then
+            udv3 = math.sgn(udv3) * servo_max_vel
+        endif
+        wall.vel.x(wadd3) = -udv3
+        wall.vel.y(wadd3) =  0.0
+    else
+        wall.vel.x(wadd3) = 0.0
+        wall.vel.y(wadd3) = 0.0
+    endif
+
+    if do_servo4 then
+        udv4 = gx4 * (wnst4 - servo_syy)
+        if math.abs(udv4) >= servo_max_vel then
+            udv4 = math.sgn(udv4) * servo_max_vel
+        endif
+        wall.vel.x(wadd4) = 0.0
+        wall.vel.y(wadd4) = -udv4
+    else
+        wall.vel.x(wadd4) = 0.0
+        wall.vel.y(wadd4) = 0.0
+    endif
+end
+
+[do_servo1 = true]
+[do_servo2 = true]
+[do_servo3 = true]
+[do_servo4 = true]
+
+[gain_cnt = 0]
+[nstep = 0]
+[steady_count = 0]
+
+[prev_wnst1 = 0.0]
+[prev_wnst2 = 0.0]
+[prev_wnst3 = 0.0]
+[prev_wnst4 = 0.0]
+
+def stop_me
+    stop_me = 0
+    iflag_err  = 1
+    iflag_rate = 1
+
+    nstep = nstep + 1
+    if nstep >= servo_max_steps then
+        stop_me = 1
+        exit
+    endif
+
+    gain_cnt = gain_cnt + 1
+    if gain_cnt >= servo_gain_update_freq then
+        compute_gain
+        gain_cnt = 0
+    endif
+
+    compute_wallstress
+
+    
+    if do_servo1 then
+        if math.abs((wnst1 - servo_sxx) / servo_sxx) > servo_tol then
+            iflag_err = 0
+        endif
+    endif
+
+    if do_servo2 then
+        if math.abs((wnst2 - servo_syy) / servo_syy) > servo_tol then
+            iflag_err = 0
+        endif
+    endif
+
+    if do_servo3 then
+        if math.abs((wnst3 - servo_sxx) / servo_sxx) > servo_tol then
+            iflag_err = 0
+        endif
+    endif
+
+    if do_servo4 then
+        if math.abs((wnst4 - servo_syy) / servo_syy) > servo_tol then
+            iflag_err = 0
+        endif
+    endif
+
+    if nstep > 1 then
+        if do_servo1 then
+            if math.abs((wnst1 - prev_wnst1) / servo_sxx) > stress_rate_tol then
+                iflag_rate = 0
+            endif
+        endif
+
+        if do_servo2 then
+            if math.abs((wnst2 - prev_wnst2) / servo_syy) > stress_rate_tol then
+                iflag_rate = 0
+            endif
+        endif
+
+        if do_servo3 then
+            if math.abs((wnst3 - prev_wnst3) / servo_sxx) > stress_rate_tol then
+                iflag_rate = 0
+            endif
+        endif
+
+        if do_servo4 then
+            if math.abs((wnst4 - prev_wnst4) / servo_syy) > stress_rate_tol then
+                iflag_rate = 0
+            endif
+        endif
+    else
+        iflag_rate = 0
+    endif
+
+    prev_wnst1 = wnst1
+    prev_wnst2 = wnst2
+    prev_wnst3 = wnst3
+    prev_wnst4 = wnst4
+
+   
+    if (iflag_err == 1) & (iflag_rate == 1) then
+        steady_count = steady_count + 1
+    else
+        steady_count = 0
+    endif
+
+    if steady_count >= steady_need then
+        stop_me = 1
+    endif
+end
+
+@compute_gain
+fish callback add @servo_walls 1.0
+
+@compute_gain
+@compute_wallstress
+
+history @wnst1
+history @wnst2
+history @wnst3
+history @wnst4
+
+
+plot create 'wall_stress_history'
+plot item create chart-history history 1 history 2 history 3 history 4
+plot show
+
+model solve fish-halt @stop_me
+
+fish callback remove @servo_walls 1.0
+
+[wall.vel.x(wadd1) = 0.0]
+[wall.vel.y(wadd1) = 0.0]
+[wall.vel.x(wadd2) = 0.0]
+[wall.vel.y(wadd2) = 0.0]
+[wall.vel.x(wadd3) = 0.0]
+[wall.vel.y(wadd3) = 0.0]
+[wall.vel.x(wadd4) = 0.0]
+[wall.vel.y(wadd4) = 0.0]
+
+model calm
+ball attribute displacement multiply 0.0
+
+model save "sample_compact"

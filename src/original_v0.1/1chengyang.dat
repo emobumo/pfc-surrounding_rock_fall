@@ -1,0 +1,31 @@
+model new
+
+def par
+    width=85
+    height=150
+    
+    maishen=60
+    
+    rdmin=0.2
+    rdmax=rdmin*1.66
+    
+    poro=0.1
+    
+    suidao_rad=2
+end
+@par
+model domain extent [-width*0.6] [width*0.6] [-maishen-height*1.1] [-maishen*0.9]
+wall generate box [-width*0.5] [width*0.5] [-maishen-height*1.0] [-maishen]
+
+ball distribute porosity @poro radius @rdmin @rdmax box ...
+               [-width*0.5] [width*0.5] [-maishen-height*1.0] [-maishen]
+ball attribute density 3e3 damp 0.7
+
+
+
+cmat default model linear method deform emod 10e6 kratio 1.5 property fric 0.5
+
+model cycle 2000 calm 20
+model solve 
+
+model save "sample_keli"

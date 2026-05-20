@@ -1,0 +1,108 @@
+# 02 Modeling Workflow
+
+## 1. 总体建模思路
+
+本项目采用 PFC2D 6.0 与 FLAC2D 的 wall-zone 耦合方法，模拟地下矿房采空后围岩的崩落塌陷过程。
+
+当前阶段的主要目标不是一次性实现复杂真实矿体，而是先打通完整计算流程。因此，初期模型可简化为单种岩石、矩形矿房。在流程跑通后，再逐步扩展为通过 DXF 导入倾斜矿房形状，并通过多个 DXF 区域实现不同岩石区域的颗粒赋参。
+
+当前推荐的完整建模流程为：
+
+1. 生成 PFC 颗粒；
+2. 对颗粒进行初步压密；
+3. 对颗粒进行赋参并添加接触模型；
+4. 通过伺服墙体恢复原岩应力；
+5. 创建或调整 FLAC2D zone 区域；
+6. 建立 PFC2D 与 FLAC2D 之间的 wall-zone 耦合边界；
+7. 进行耦合模型初始平衡；
+8. 删除矿房区域对应的 PFC 颗粒，形成采空区；
+9. 继续计算，观察围岩崩落、塌陷和远区应力分布变化；
+10. 根据需要保存模型状态和结果。
+
+
+## 2. 原始版本流程
+
+原始版本已经验证可以运行，其流程大致为：
+
+```text
+颗粒生成
+→ 创建 FLAC zone 区域
+→ 建立 wall-zone 耦合
+→ 添加接触模型
+→ 施加重力并平衡
+→ 删除矿房区域颗粒
+→ 计算开挖后响应
+→ 自动保存状态文件
+```
+
+原始版本最值得保留的部分是：
+
+- PFC-zone 耦合流程；
+- 开挖后的自动保存逻辑。
+
+原始版本主要不足是：
+
+- PFC 颗粒区域未充分恢复原岩应力；
+- 后期可能出现上部颗粒离开耦合墙的问题。
+
+## 3. 改写后目标流程
+
+PFC 部分的正确先后顺序应为：
+
+```text
+生成颗粒
+→ 颗粒初步压密
+→ 颗粒赋参并添加接触模型
+→ 恢复原岩应力
+→ 开挖
+
+## 4. 建议代码拆分
+
+后续主线代码可按以下方式拆分：
+
+```text
+src/current/
+├─ 00_parameters.dat
+├─ 01_generate_particles.dat
+├─ 02_wall_servo_initial_stress.dat
+├─ 03_assign_particle_parameters.dat
+├─ 04_assign_contact_model.dat
+├─ 05_create_zone_and_coupling.dat
+├─ 06_initial_equilibrium.dat
+├─ 07_excavation_and_save.dat
+└─ doall.dat
+```
+
+| 文件 | 作用 |
+|---|---|
+| `00_parameters.dat` | 集中定义几何尺寸、埋深、矿房尺寸、颗粒半径、材料参数等 |
+| `01_generate_particles.dat` | 创建 PFC 颗粒区域和临时墙体 |
+| `02_wall_servo_initial_stress.dat` | 通过墙体伺服恢复原岩应力 |
+| `03_assign_particle_parameters.dat` | 设置颗粒密度、阻尼、摩擦等参数 |
+| `04_assign_contact_model.dat` | 设置或切换 PFC 接触模型 |
+| `05_create_zone_and_coupling.dat` | 创建 FLAC zone 区域和 wall-zone 耦合边界 |
+| `06_initial_equilibrium.dat` | 完成耦合后的初始平衡 |
+| `07_excavation_and_save.dat` | 删除矿房颗粒，计算开挖后响应，并自动保存状态 |
+| `doall.dat` | 总控文件，按顺序调用各阶段代码 |
+
+## 5. 接触模型策略
+
+当前阶段，PFC 区域接触模型先套用本地参考案例“含裂隙岩体原岩应力平衡与开挖扰动模拟”中的接触模型。
+
+注意事项：
+
+- 参考案例为 PFC5.0 版本；
+- 本地尚未运行验证；
+- 参考前必须先转换为 PFC2D 6.0 语法；
+- 需要先梳理其建模逻辑，再决定如何移植；
+- FLAC 的本构模型当前先保持原始版本不变。
+
+## 6. 当前优先级
+
+当前优先级为：
+
+1. 打通整体流程；
+2. 恢复 PFC 原岩应力；
+3. 完成耦合区域尺寸对接；
+4. 完成开挖计算；
+5. 流程稳定后，再整理结果输出、history 曲线和状态保存。

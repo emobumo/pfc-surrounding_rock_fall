@@ -1,0 +1,100 @@
+model restore "sample_keli"
+model mechanical time-total 0
+ball attribute density 2.2e3
+ball attribute displacement multiply 0
+
+def moxing_par
+    moxing_width=200
+    moxing_height=300
+end
+@moxing_par
+
+
+def mesh_num
+    nx_outer  = 23
+    nx_core   = 34
+
+    ny_top    = 24
+    ny_middle = 60
+    ny_bottom = 36
+end
+@mesh_num
+
+; ---------- top row ----------
+zone create quad size @ny_top @nx_outer ...
+    point 0 [-moxing_width*0.5] [0] ...
+    point 1 [-moxing_width*0.5] [-maishen] ...
+    point 2 [-width*0.5] [0]
+
+zone create quad size @ny_top @nx_core ...
+    point 0 [-width*0.5] [0] ...
+    point 1 [-width*0.5] [-maishen] ...
+    point 2 [width*0.5] [0]
+
+zone create quad size @ny_top @nx_outer ...
+    point 0 [width*0.5] [0] ...
+    point 1 [width*0.5] [-maishen] ...
+    point 2 [moxing_width*0.5] [0]
+
+; ---------- middle row ----------
+zone create quad size @ny_middle @nx_outer ...
+    point 0 [-moxing_width*0.5] [-maishen] ...
+    point 1 [-moxing_width*0.5] [-maishen-height] ...
+    point 2 [-width*0.5] [-maishen]
+
+zone create quad size @ny_middle @nx_outer ...
+    point 0 [width*0.5] [-maishen] ...
+    point 1 [width*0.5] [-maishen-height] ...
+    point 2 [moxing_width*0.5] [-maishen]
+
+; ---------- bottom row ----------
+zone create quad size @ny_bottom @nx_outer ...
+    point 0 [-moxing_width*0.5] [-maishen-height] ...
+    point 1 [-moxing_width*0.5] [-moxing_height] ...
+    point 2 [-width*0.5] [-maishen-height]
+
+zone create quad size @ny_bottom @nx_core ...
+    point 0 [-width*0.5] [-maishen-height] ...
+    point 1 [-width*0.5] [-moxing_height] ...
+    point 2 [width*0.5] [-maishen-height]
+
+zone create quad size @ny_bottom @nx_outer ...
+    point 0 [width*0.5] [-maishen-height] ...
+    point 1 [width*0.5] [-moxing_height] ...
+    point 2 [moxing_width*0.5] [-maishen-height]
+                
+                                     
+zone initialize density 3e3 
+zone cmodel assign elastic 
+zone property  young 10e9 poisson 0.3
+
+wall delete
+
+wall-zone create range pos-x [-width*0.5-0.1] [width*0.5+0.1] ...
+                    pos-y  [-maishen-height-0.1] [-maishen+0.1]
+
+
+cmat default model linearpbond method deform emod 10e9 kratio 1.5  ...
+            pb_deform emod 9.8e9 kratio 1.5  property pb_ten 1.2e6 pb_coh 24e6 pb_fa 40 fric 0.25 lin_mode 1
+cmat apply
+
+model clean
+model calm
+
+contact property lin_force 0 0 
+ball attribute force-contact 0 0   
+
+contact method bond gap @rdmin
+
+zone gridpoint fix velocity-y range pos-y  [-moxing_height-0.000001] [-moxing_height+0.000001]
+zone gridpoint fix velocity-x range pos-x  [-moxing_width*0.5-0.000001] [-moxing_width*0.5+0.000001]
+zone gridpoint fix velocity-x range pos-x  [moxing_width*0.5-0.000001] [moxing_width*0.5+0.000001]
+
+
+model gravity [9.8]
+
+
+model cycle 1000
+model solve
+
+model save "zizhong"

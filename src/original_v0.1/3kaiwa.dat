@@ -1,0 +1,41 @@
+model restore "zizhong"
+
+def kuangfang_par
+  kf_w = 15         
+  kf_h = 40          
+  kf_y_center = -150 
+end
+@kuangfang_par
+
+ball group "caikongqu" range position-x [-kf_w*0.5] [kf_w*0.5] position-y [kf_y_center - kf_h*0.5] [kf_y_center + kf_h*0.5]
+ball delete range group "caikongqu"
+
+ball attribute displacement multiply 0
+
+zone gridpoint initialize displacement 0 0 
+
+
+
+[baocunpinlv=1.0]
+[time_record_savefile=-1]
+[count=0]
+def savefile  
+    time=mech.time.total
+    if time-time_record_savefile >= baocunpinlv then
+        filename=string.build("cjieguo%1",count)
+        command
+            model save @filename
+        endcommand
+        time_record_savefile=time
+        count +=1
+    endif    
+end
+fish callback add @savefile -0.5
+
+
+
+model cycle 1
+
+model mechanical time-total 0
+model solve time 30.0
+model save "kaiwa"
