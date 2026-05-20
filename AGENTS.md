@@ -48,11 +48,11 @@ The reconstruction should preserve the validated coupling and state-saving logic
 The reconstructed PFC workflow should include:
 
 1. particle generation;
-2. servo wall loading for in-situ stress recovery;
-3. stability check after servo loading;
-4. particle parameter assignment;
-5. contact model assignment;
-6. coupling boundary and zone region re-creation;
+2. preliminary particle compaction;
+3. particle grouping and parameter assignment;
+4. contact model installation and bonding;
+5. in-situ stress recovery using servo walls;
+6. coupling boundary and FLAC zone region re-creation;
 7. excavation by deleting stope particles;
 8. later result output and automatic saving.
 

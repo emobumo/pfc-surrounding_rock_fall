@@ -55,6 +55,7 @@ PFC 部分的正确先后顺序应为：
 → 颗粒赋参并添加接触模型
 → 恢复原岩应力
 → 开挖
+```
 
 ## 4. 建议代码拆分
 
@@ -64,26 +65,14 @@ PFC 部分的正确先后顺序应为：
 src/current/
 ├─ 00_parameters.dat
 ├─ 01_generate_particles.dat
-├─ 02_wall_servo_initial_stress.dat
-├─ 03_assign_particle_parameters.dat
-├─ 04_assign_contact_model.dat
-├─ 05_create_zone_and_coupling.dat
-├─ 06_initial_equilibrium.dat
-├─ 07_excavation_and_save.dat
+├─ 02_preliminary_compaction.dat
+├─ 03_assign_parameters_and_contact_model.dat
+├─ 04_restore_insitu_stress_by_servo.dat
+├─ 05_create_zone_and_wall_zone_coupling.dat
+├─ 06_coupled_initial_equilibrium.dat
+├─ 07_excavation_and_post_calculation.dat
 └─ doall.dat
 ```
-
-| 文件 | 作用 |
-|---|---|
-| `00_parameters.dat` | 集中定义几何尺寸、埋深、矿房尺寸、颗粒半径、材料参数等 |
-| `01_generate_particles.dat` | 创建 PFC 颗粒区域和临时墙体 |
-| `02_wall_servo_initial_stress.dat` | 通过墙体伺服恢复原岩应力 |
-| `03_assign_particle_parameters.dat` | 设置颗粒密度、阻尼、摩擦等参数 |
-| `04_assign_contact_model.dat` | 设置或切换 PFC 接触模型 |
-| `05_create_zone_and_coupling.dat` | 创建 FLAC zone 区域和 wall-zone 耦合边界 |
-| `06_initial_equilibrium.dat` | 完成耦合后的初始平衡 |
-| `07_excavation_and_save.dat` | 删除矿房颗粒，计算开挖后响应，并自动保存状态 |
-| `doall.dat` | 总控文件，按顺序调用各阶段代码 |
 
 ## 5. 接触模型策略
 
