@@ -1,0 +1,117 @@
+model restore "sample_compact"
+
+
+def bond_par
+   
+    rock_density = 3000.0
+    rock_damp    = 0.1
+
+    floater_expand_fac = 1.01
+    floater_limit      = 50
+    
+    emod_lin   = 10.0e9
+    bond_krat  = 2.5
+    pb_emod    = 37.84e9
+
+    ten_       = 1.83e8
+    coh_       = 1.83e8
+    pb_fa_     = 45.0
+    bond_fric  = 0.4
+    bond_gap   = 1.0e-5
+
+   
+    weak_ratio = 0.40
+    weak_fac   = 0.05
+end
+@bond_par
+
+def expand_floaters_radius(xishu)
+    num = 0
+    loop foreach local bp ball.list
+        local cmap = ball.contactmap(bp)
+        local ncnt = map.size(cmap)
+        if ncnt <= 1 then
+            ball.radius(bp) = ball.radius(bp) * xishu
+            num = num + 1
+        endif
+    endloop
+end
+
+def compute_floaters(xishu)
+    num = 10000
+    loop while num > floater_limit
+        expand_floaters_radius(xishu)
+        command
+            model clean
+        endcommand
+    endloop
+end
+
+@compute_floaters([floater_expand_fac])
+
+
+
+
+ball attribute velocity multiply 0.0
+ball attribute displacement multiply 0.0
+ball attribute force-contact 0.0 0.0
+
+ball group 'rock'
+
+def identify_floaters
+    loop foreach local bp ball.list
+        ball.group.remove(bp,'floaters')
+        local cmap = ball.contactmap(bp)
+        local ncnt = map.size(cmap)
+        if ncnt <= 1 then
+            ball.group(bp) = 'floaters'
+        endif
+    endloop
+end
+@identify_floaters
+
+ball attribute density @rock_density damp @rock_damp
+
+
+contact cmat add 1 model linearpbond ...
+    method deform emod @emod_lin kratio @bond_krat ...
+           pb_deform emod @pb_emod kratio @bond_krat ...
+    property fric @bond_fric lin_mode 1 ...
+             pb_ten @ten_ pb_coh @coh_ pb_fa @pb_fa_ ...
+    range group 'rock' matches 2
+
+contact cmat apply
+
+
+contact method bond gap @bond_gap range contact model 'linearpbond'
+
+
+def part_contact_turn_off
+    loop foreach local cp contact.list("ball-ball")
+        if contact.model(cp) == "linearpbond" then
+            local x = math.random.uniform
+            if x < weak_ratio then
+                contact.group(cp) = "rock_contact_weak"
+            endif
+        endif
+    endloop
+end
+@part_contact_turn_off
+
+contact method deform emod [emod_lin*0.5] kratio @bond_krat ...
+    range group "rock_contact_weak"
+contact method pb_deform emod [pb_emod*0.5] kratio @bond_krat ...
+    range group "rock_contact_weak"
+contact property fric @bond_fric lin_mode 1 ...
+                 pb_ten [ten_*weak_fac] pb_coh [coh_*weak_fac] pb_fa @pb_fa_ ...
+    range group "rock_contact_weak"
+
+
+model clean
+model calm
+
+ball attribute velocity multiply 0.0
+ball attribute displacement multiply 0.0
+ball attribute force-contact 0.0 0.0
+
+model save "sample_bonded"
