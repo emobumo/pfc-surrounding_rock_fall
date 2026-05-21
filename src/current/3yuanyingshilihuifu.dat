@@ -1,0 +1,285 @@
+model restore "sample_bonded"
+
+
+def insitu_par
+    ; 必须与 1chushichengyang.dat 的几何尺寸保持一致
+    width  = 85.0
+    height = 150.0
+    maishen = 60.0
+
+    wall_len_v = height
+    wall_len_h = width
+
+    ; 参考案例恢复原岩应力逻辑
+    ; 左右侧恢复水平原岩应力，顶部恢复竖向原岩应力，底部固定
+    insitu_sxx = -3.815e6
+    insitu_syy = -6.700e6
+    grav_acc   = 9.8
+
+    ; 伺服控制参数
+    servo_tol = 2.0e-2
+    stress_rate_tol = 2.0e-3
+    servo_gain_fac = 0.1
+    servo_gain_update_freq = 1
+    servo_max_steps = 300000
+    servo_max_vel = 0.01
+    steady_need = 500
+
+    insitu_damp = 0.7
+end
+@insitu_par
+
+
+def wall_addr
+    wadd1 = wall.find(1)
+    wadd2 = wall.find(2)
+    wadd3 = wall.find(3)
+    wadd4 = wall.find(4)
+end
+@wall_addr
+
+
+def compute_wallstress
+    wnst1 = math.sqrt(wall.force.contact.x(wadd1)^2 + wall.force.contact.y(wadd1)^2)
+    wnst2 = math.sqrt(wall.force.contact.x(wadd2)^2 + wall.force.contact.y(wadd2)^2)
+    wnst3 = math.sqrt(wall.force.contact.x(wadd3)^2 + wall.force.contact.y(wadd3)^2)
+    wnst4 = math.sqrt(wall.force.contact.x(wadd4)^2 + wall.force.contact.y(wadd4)^2)
+
+    wnst1 = -wnst1 / wall_len_v
+    wnst2 = -wnst2 / wall_len_h
+    wnst3 = -wnst3 / wall_len_v
+    wnst4 = -wnst4 / wall_len_h
+end
+
+
+def compute_gain
+    fac = servo_gain_fac
+    gx = 0.0
+
+    wp = wall.find(1)
+    loop foreach contact wall.contactmap(wp)
+        gx = gx + contact.prop(contact, "kn")
+    endloop
+    if gx < 1e5 then
+        gx = 1e5
+    endif
+    gx1 = fac * wall_len_v / (gx * global.timestep)
+
+    gx = 0.0
+    wp = wall.find(2)
+    loop foreach contact wall.contactmap(wp)
+        gx = gx + contact.prop(contact, "kn")
+    endloop
+    if gx < 1e5 then
+        gx = 1e5
+    endif
+    gx2 = fac * wall_len_h / (gx * global.timestep)
+
+    gx = 0.0
+    wp = wall.find(3)
+    loop foreach contact wall.contactmap(wp)
+        gx = gx + contact.prop(contact, "kn")
+    endloop
+    if gx < 1e5 then
+        gx = 1e5
+    endif
+    gx3 = fac * wall_len_v / (gx * global.timestep)
+
+    gx = 0.0
+    wp = wall.find(4)
+    loop foreach contact wall.contactmap(wp)
+        gx = gx + contact.prop(contact, "kn")
+    endloop
+    if gx < 1e5 then
+        gx = 1e5
+    endif
+    gx4 = fac * wall_len_h / (gx * global.timestep)
+end
+
+
+def servo_walls
+    compute_wallstress
+
+    if do_servo1 then
+        udv1 = gx1 * (wnst1 - insitu_sxx)
+        if math.abs(udv1) >= servo_max_vel then
+            udv1 = math.sgn(udv1) * servo_max_vel
+        endif
+        wall.vel.x(wadd1) = udv1
+        wall.vel.y(wadd1) = 0.0
+    else
+        wall.vel.x(wadd1) = 0.0
+        wall.vel.y(wadd1) = 0.0
+    endif
+
+    ; 底墙固定，不参与伺服
+    wall.vel.x(wadd2) = 0.0
+    wall.vel.y(wadd2) = 0.0
+
+    if do_servo3 then
+        udv3 = gx3 * (wnst3 - insitu_sxx)
+        if math.abs(udv3) >= servo_max_vel then
+            udv3 = math.sgn(udv3) * servo_max_vel
+        endif
+        wall.vel.x(wadd3) = -udv3
+        wall.vel.y(wadd3) = 0.0
+    else
+        wall.vel.x(wadd3) = 0.0
+        wall.vel.y(wadd3) = 0.0
+    endif
+
+    if do_servo4 then
+        udv4 = gx4 * (wnst4 - insitu_syy)
+        if math.abs(udv4) >= servo_max_vel then
+            udv4 = math.sgn(udv4) * servo_max_vel
+        endif
+        wall.vel.x(wadd4) = 0.0
+        wall.vel.y(wadd4) = -udv4
+    else
+        wall.vel.x(wadd4) = 0.0
+        wall.vel.y(wadd4) = 0.0
+    endif
+end
+
+
+[do_servo1 = true]
+[do_servo2 = false]
+[do_servo3 = true]
+[do_servo4 = true]
+
+[gain_cnt = 0]
+[nstep = 0]
+[steady_count = 0]
+
+[prev_wnst1 = 0.0]
+[prev_wnst2 = 0.0]
+[prev_wnst3 = 0.0]
+[prev_wnst4 = 0.0]
+
+
+def stop_me2
+    stop_me2 = 0
+    iflag_err  = 1
+    iflag_rate = 1
+
+    nstep = nstep + 1
+    if nstep >= servo_max_steps then
+        stop_me2 = 1
+        exit
+    endif
+
+    gain_cnt = gain_cnt + 1
+    if gain_cnt >= servo_gain_update_freq then
+        compute_gain
+        gain_cnt = 0
+    endif
+
+    compute_wallstress
+
+    if do_servo1 then
+        if math.abs((wnst1 - insitu_sxx) / insitu_sxx) > servo_tol then
+            iflag_err = 0
+        endif
+    endif
+
+    if do_servo3 then
+        if math.abs((wnst3 - insitu_sxx) / insitu_sxx) > servo_tol then
+            iflag_err = 0
+        endif
+    endif
+
+    if do_servo4 then
+        if math.abs((wnst4 - insitu_syy) / insitu_syy) > servo_tol then
+            iflag_err = 0
+        endif
+    endif
+
+    if nstep > 1 then
+        if do_servo1 then
+            if math.abs((wnst1 - prev_wnst1) / insitu_sxx) > stress_rate_tol then
+                iflag_rate = 0
+            endif
+        endif
+
+        if do_servo3 then
+            if math.abs((wnst3 - prev_wnst3) / insitu_sxx) > stress_rate_tol then
+                iflag_rate = 0
+            endif
+        endif
+
+        if do_servo4 then
+            if math.abs((wnst4 - prev_wnst4) / insitu_syy) > stress_rate_tol then
+                iflag_rate = 0
+            endif
+        endif
+    else
+        iflag_rate = 0
+    endif
+
+    prev_wnst1 = wnst1
+    prev_wnst2 = wnst2
+    prev_wnst3 = wnst3
+    prev_wnst4 = wnst4
+
+    if iflag_err == 1 then
+        if iflag_rate == 1 then
+            steady_count = steady_count + 1
+        else
+            steady_count = 0
+        endif
+    else
+        steady_count = 0
+    endif
+
+    if steady_count >= steady_need then
+        stop_me2 = 1
+    endif
+end
+
+
+ball attribute velocity multiply 0.0
+ball attribute displacement multiply 0.0
+ball attribute force-contact 0.0 0.0
+ball attribute damp @insitu_damp
+
+wall.vel.x(wadd1) = 0.0
+wall.vel.y(wadd1) = 0.0
+wall.vel.x(wadd2) = 0.0
+wall.vel.y(wadd2) = 0.0
+wall.vel.x(wadd3) = 0.0
+wall.vel.y(wadd3) = 0.0
+wall.vel.x(wadd4) = 0.0
+wall.vel.y(wadd4) = 0.0
+
+model gravity [grav_acc]
+
+@compute_gain
+@compute_wallstress
+fish callback add @servo_walls 1.0
+
+history @wnst1
+history @wnst2
+history @wnst3
+history @wnst4
+
+plot create 'insitu_wall_stress_history'
+plot item create chart-history history 1 history 2 history 3 history 4
+plot show
+
+model solve fish-halt @stop_me2
+
+fish callback remove @servo_walls 1.0
+
+wall.vel.x(wadd1) = 0.0
+wall.vel.y(wadd1) = 0.0
+wall.vel.x(wadd2) = 0.0
+wall.vel.y(wadd2) = 0.0
+wall.vel.x(wadd3) = 0.0
+wall.vel.y(wadd3) = 0.0
+wall.vel.x(wadd4) = 0.0
+wall.vel.y(wadd4) = 0.0
+
+model calm
+ball attribute displacement multiply 0.0
+
+model save "sample_insitu"
